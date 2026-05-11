@@ -154,7 +154,7 @@ final class TelemetryEvents {
     }
 
     private void sendInventorySnapshot(ServerPlayer player) {
-        Map<String, Object> payload = playerPayload(player);
+        Map<String, Object> payload = playerPayload(player, false);
         Inventory inventory = player.getInventory();
         List<Map<String, Object>> items = new ArrayList<>();
         for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
@@ -178,15 +178,21 @@ final class TelemetryEvents {
     }
 
     private static Map<String, Object> playerPayload(ServerPlayer player) {
+        return playerPayload(player, true);
+    }
+
+    private static Map<String, Object> playerPayload(ServerPlayer player, boolean includePosition) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("playerUuid", player.getUUID().toString());
         payload.put("playerName", player.getGameProfile().getName());
         payload.put("dimension", player.level().dimension().location().toString());
-        payload.put("position", Map.of(
-                "x", player.getX(),
-                "y", player.getY(),
-                "z", player.getZ()
-        ));
+        if (includePosition) {
+            payload.put("position", Map.of(
+                    "x", player.getX(),
+                    "y", player.getY(),
+                    "z", player.getZ()
+            ));
+        }
         payload.put("world", worldPayload(player));
         payload.put("occurredAt", Instant.now().toString());
         return payload;
