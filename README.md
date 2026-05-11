@@ -54,7 +54,7 @@ Cada evento debe incluir:
   "serverName": "Survival 01",
   "packId": "survival",
   "packVersion": "1.0.0",
-  "minecraftVersion": "1.21.10",
+  "minecraftVersion": "1.20.1",
   "loader": "forge"
 }
 ```
@@ -236,7 +236,7 @@ Payload:
 
 ## Cliente HTTP
 
-Usar `java.net.http.HttpClient`, disponible en Java 21.
+Usar `java.net.http.HttpClient`, disponible en Java 17.
 
 Reglas:
 
@@ -273,7 +273,7 @@ Ejemplo completo para muerte:
   "serverName": "Survival 01",
   "packId": "survival",
   "packVersion": "1.0.0",
-  "minecraftVersion": "1.21.10",
+  "minecraftVersion": "1.20.1",
   "loader": "forge",
   "eventType": "player_death",
   "playerUuid": "00000000-0000-0000-0000-000000000000",
@@ -323,7 +323,7 @@ InventorySnapshot: convertir inventario a JSON pequeno.
 
 El mod esta listo cuando:
 
-- Compila con Forge 1.21.10 / Java 21.
+- Compila con Forge 1.20.1 / Java 17.
 - Arranca en dedicated server sin cliente.
 - Si falta `apiKey`, no crashea.
 - Reporta login/logout.

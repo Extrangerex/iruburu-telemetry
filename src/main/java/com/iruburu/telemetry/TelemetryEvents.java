@@ -1,8 +1,7 @@
 package com.iruburu.telemetry;
 
-import net.minecraft.advancements.AdvancementHolder;
+import net.minecraft.advancements.Advancement;
 import net.minecraft.advancements.DisplayInfo;
-import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
@@ -15,15 +14,16 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.Enchantment;
+import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.storage.LevelData;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.living.LivingDamageEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.player.AdvancementEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
-import it.unimi.dsi.fastutil.objects.Object2IntMap;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -45,6 +45,7 @@ final class TelemetryEvents {
         this.client = client;
     }
 
+    @SubscribeEvent
     void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             Map<String, Object> payload = playerPayload(player);
@@ -55,6 +56,7 @@ final class TelemetryEvents {
         }
     }
 
+    @SubscribeEvent
     void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             Map<String, Object> payload = playerPayload(player);
@@ -66,6 +68,7 @@ final class TelemetryEvents {
         }
     }
 
+    @SubscribeEvent
     void onLivingDeath(LivingDeathEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             DamageSource source = event.getSource();
@@ -83,6 +86,7 @@ final class TelemetryEvents {
         }
     }
 
+    @SubscribeEvent
     void onLivingDamage(LivingDamageEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             long now = System.nanoTime();
@@ -109,6 +113,7 @@ final class TelemetryEvents {
         }
     }
 
+    @SubscribeEvent
     void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             Map<String, Object> payload = playerPayload(player);
@@ -118,20 +123,23 @@ final class TelemetryEvents {
         }
     }
 
-    void onAdvancementEarned(AdvancementEvent.AdvancementEarnEvent event) {
+    @SubscribeEvent
+    void onAdvancementEarned(AdvancementEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
-            AdvancementHolder advancement = event.getAdvancement();
+            Advancement advancement = event.getAdvancement();
             Map<String, Object> payload = playerPayload(player);
-            payload.put("advancementId", advancement.id().toString());
-            payload.put("title", advancement.value().display()
-                    .map(DisplayInfo::getTitle)
-                    .map(component -> component.getString())
-                    .orElse(""));
+            DisplayInfo display = advancement.getDisplay();
+            payload.put("advancementId", advancement.getId().toString());
+            payload.put("title", display == null ? "" : display.getTitle().getString());
             client.send("advancement_completed", payload);
         }
     }
 
-    void onServerTick(TickEvent.ServerTickEvent.Post event) {
+    @SubscribeEvent
+    void onServerTick(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) {
+            return;
+        }
         serverTicks++;
         TelemetryConfig.Values config = TelemetryConfig.current();
         int intervalTicks = Math.max(1, config.inventorySnapshotIntervalSeconds()) * TICKS_PER_SECOND;
@@ -139,7 +147,7 @@ final class TelemetryEvents {
             return;
         }
 
-        MinecraftServer server = event.server();
+        MinecraftServer server = event.getServer();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             sendInventorySnapshot(player);
         }
@@ -157,7 +165,7 @@ final class TelemetryEvents {
         }
         payload.put("items", items);
         payload.put("itemCount", items.size());
-        payload.put("selectedSlot", inventory.getSelectedSlot());
+        payload.put("selectedSlot", inventory.selected);
         payload.put("armor", equipmentSummary(player, List.of(
                 EquipmentSlot.FEET,
                 EquipmentSlot.LEGS,
@@ -172,7 +180,7 @@ final class TelemetryEvents {
     private static Map<String, Object> playerPayload(ServerPlayer player) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("playerUuid", player.getUUID().toString());
-        payload.put("playerName", player.getGameProfile().name());
+        payload.put("playerName", player.getGameProfile().getName());
         payload.put("dimension", player.level().dimension().location().toString());
         payload.put("position", Map.of(
                 "x", player.getX(),
@@ -224,9 +232,8 @@ final class TelemetryEvents {
         item.put("damage", stack.getDamageValue());
         item.put("maxDamage", stack.getMaxDamage());
         item.put("maxStackSize", stack.getMaxStackSize());
-        Component customName = stack.getCustomName();
-        if (customName != null) {
-            item.put("customName", customName.getString());
+        if (stack.hasCustomHoverName()) {
+            item.put("customName", stack.getHoverName().getString());
         }
         item.put("enchantments", enchantments(stack));
         return item;
@@ -234,12 +241,10 @@ final class TelemetryEvents {
 
     private static List<Map<String, Object>> enchantments(ItemStack stack) {
         List<Map<String, Object>> result = new ArrayList<>();
-        for (Object2IntMap.Entry<Holder<Enchantment>> entry : stack.getEnchantments().entrySet()) {
+        for (Map.Entry<Enchantment, Integer> entry : EnchantmentHelper.getEnchantments(stack).entrySet()) {
             Map<String, Object> enchantment = new LinkedHashMap<>();
-            enchantment.put("id", entry.getKey().unwrapKey()
-                    .map(key -> key.location().toString())
-                    .orElse(entry.getKey().getRegisteredName()));
-            enchantment.put("level", entry.getIntValue());
+            enchantment.put("id", BuiltInRegistries.ENCHANTMENT.getKey(entry.getKey()).toString());
+            enchantment.put("level", entry.getValue());
             result.add(enchantment);
         }
         return result;
